@@ -15,10 +15,9 @@ data.
 
 ## Commands
 
-```bash
-# Install dependencies
-npm install
+### Development
 
+```bash
 # Run client and server together in development
 npm run dev
 
@@ -27,6 +26,16 @@ npm run dev:server
 
 # Run client only
 npm run dev:client
+```
+
+Run these commands to test functionality on one machine. Run the production commands to test across different machines 
+on the same network.
+
+### Production
+
+```bash
+# Install dependencies
+npm install
 
 # Build the client for production
 npm run build
@@ -34,3 +43,5 @@ npm run build
 # Start the production server
 npm start
 ```
+
+Run these commands to host a server that is accessible across multiple devices on the same network.
