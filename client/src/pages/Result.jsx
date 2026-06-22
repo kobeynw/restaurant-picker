@@ -27,11 +27,12 @@ export default function Result() {
 
   const tally = useMemo(() => {
     if (!session || !session.votes) return null;
-    const counts = new Map();
-    for (const id of Object.values(session.votes)) {
-      counts.set(id, (counts.get(id) || 0) + 1);
+    const N = session.voteLimit ?? 1;
+    const points = new Map();
+    for (const ranking of Object.values(session.votes)) {
+      ranking.forEach((id, idx) => points.set(id, (points.get(id) || 0) + (N - idx)));
     }
-    return [...counts.entries()]
+    return [...points.entries()]
       .map(([id, count]) => ({
         restaurant: restaurants.find((r) => r.id === id),
         count,
@@ -81,7 +82,7 @@ export default function Result() {
                 >
                   <span className="truncate">{restaurant.name}</span>
                   <span className="font-mono text-xs">
-                    {count} vote{count === 1 ? '' : 's'}
+                    {count} pt{count === 1 ? '' : 's'}
                   </span>
                 </li>
               ))}

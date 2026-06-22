@@ -14,6 +14,7 @@ export function createSession() {
     participants: [],
     suggestions: [],
     votes: {},
+    voteLimit: 3,
     winnerId: null,
     spinState: null,
     participantsLocked: false,
@@ -48,6 +49,7 @@ function publicSession(session) {
       connected: p.connected,
     })),
     suggestions: session.suggestions,
+    voteLimit: session.voteLimit,
     voteProgress: {
       cast: Object.keys(session.votes).length,
       total: session.participants.length,
@@ -75,14 +77,15 @@ function reassignHostIfNeeded(session) {
 }
 
 function tallyVotes(session) {
-  const counts = new Map();
-  for (const restaurantId of Object.values(session.votes)) {
-    counts.set(restaurantId, (counts.get(restaurantId) || 0) + 1);
+  const N = session.voteLimit;
+  const points = new Map();
+  for (const ranking of Object.values(session.votes)) {
+    ranking.forEach((id, idx) => points.set(id, (points.get(id) || 0) + (N - idx)));
   }
-  if (counts.size === 0) return null;
+  if (points.size === 0) return null;
   let max = -1;
-  for (const v of counts.values()) if (v > max) max = v;
-  const tied = [...counts.entries()].filter(([, c]) => c === max).map(([id]) => id);
+  for (const v of points.values()) if (v > max) max = v;
+  const tied = [...points.entries()].filter(([, c]) => c === max).map(([id]) => id);
   return tied[Math.floor(Math.random() * tied.length)];
 }
 
@@ -270,12 +273,30 @@ export function registerSocketHandlers(io) {
       session.status = 'deciding';
       session.participantsLocked = true;
       session.votes = {};
+      session.voteLimit = Math.min(session.voteLimit, session.suggestions.length);
       session.winnerId = null;
       session.spinState = null;
       broadcast(io, session);
     });
 
-    socket.on('cast_vote', ({ sessionId, restaurantId }) => {
+    socket.on('set_vote_limit', ({ sessionId, limit }) => {
+      const session = sessions.get(sessionId);
+      const clientId = socket.data.clientId;
+      if (!session || !clientId) return;
+      if (!isHost(session, clientId)) {
+        socket.emit('error', { message: 'Only the host can change the vote limit' });
+        return;
+      }
+      const n = Number(limit);
+      if (!Number.isInteger(n)) {
+        socket.emit('error', { message: 'Invalid vote limit' });
+        return;
+      }
+      session.voteLimit = Math.max(1, Math.min(n, Math.max(1, session.suggestions.length)));
+      broadcast(io, session);
+    });
+
+    socket.on('submit_vote', ({ sessionId, ranking }) => {
       const session = sessions.get(sessionId);
       const clientId = socket.data.clientId;
       if (!session || !clientId) return;
@@ -283,17 +304,36 @@ export function registerSocketHandlers(io) {
         socket.emit('error', { message: 'Not in voting phase' });
         return;
       }
-      if (!session.suggestions.some((s) => s.restaurantId === restaurantId)) {
+      if (!Array.isArray(ranking) || ranking.length === 0 || ranking.length > session.voteLimit) {
+        socket.emit('error', { message: 'Invalid ballot' });
+        return;
+      }
+      if (new Set(ranking).size !== ranking.length) {
+        socket.emit('error', { message: 'Duplicate choices in ballot' });
+        return;
+      }
+      if (!ranking.every((id) => session.suggestions.some((s) => s.restaurantId === id))) {
         socket.emit('error', { message: 'Not a valid choice' });
         return;
       }
-      session.votes[clientId] = restaurantId;
+      session.votes[clientId] = ranking;
       broadcast(io, session);
 
       if (Object.keys(session.votes).length >= session.participants.length) {
         const winner = tallyVotes(session);
         session.winnerId = winner;
         session.status = 'result';
+        broadcast(io, session);
+      }
+    });
+
+    socket.on('unlock_vote', ({ sessionId }) => {
+      const session = sessions.get(sessionId);
+      const clientId = socket.data.clientId;
+      if (!session || !clientId) return;
+      if (session.status !== 'deciding' || session.decisionMode !== 'vote') return;
+      if (clientId in session.votes) {
+        delete session.votes[clientId];
         broadcast(io, session);
       }
     });
