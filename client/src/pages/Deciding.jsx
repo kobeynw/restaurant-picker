@@ -4,9 +4,10 @@ import SpinWheel from '../components/SpinWheel.jsx';
 import VotePanel from '../components/VotePanel.jsx';
 
 export default function Deciding() {
-  const { session, restaurants, socket, clientId } = useSession();
+  const { session, restaurants, socket } = useSession();
   const isHost = useIsHost();
-  const [localVote, setLocalVote] = useState(null);
+  const [localRanking, setLocalRanking] = useState([]);
+  const [submitted, setSubmitted] = useState(false);
 
   const options = useMemo(() => {
     if (!session) return [];
@@ -15,15 +16,12 @@ export default function Deciding() {
       .filter(Boolean);
   }, [session, restaurants]);
 
-  const revealedVote = session?.votes ? session.votes[clientId] : null;
-
-  useEffect(() => {
-    if (revealedVote) setLocalVote(revealedVote);
-  }, [revealedVote]);
+  const voteLimit = session?.voteLimit ?? 1;
 
   useEffect(() => {
     if (session?.status !== 'deciding' || session?.decisionMode !== 'vote') {
-      setLocalVote(null);
+      setLocalRanking([]);
+      setSubmitted(false);
     }
   }, [session?.status, session?.decisionMode]);
 
@@ -33,16 +31,29 @@ export default function Deciding() {
     socket.emit('start_spin', { sessionId: session.id });
   }
 
-  function handleVote(restaurantId) {
-    setLocalVote(restaurantId);
-    socket.emit('cast_vote', { sessionId: session.id, restaurantId });
+  function toggleRank(restaurantId) {
+    if (submitted) return;
+    setLocalRanking((prev) => {
+      if (prev.includes(restaurantId)) return prev.filter((id) => id !== restaurantId);
+      if (prev.length >= voteLimit) return prev;
+      return [...prev, restaurantId];
+    });
+  }
+
+  function lockIn() {
+    if (localRanking.length === 0) return;
+    setSubmitted(true);
+    socket.emit('submit_vote', { sessionId: session.id, ranking: localRanking });
+  }
+
+  function editVotes() {
+    setSubmitted(false);
+    socket.emit('unlock_vote', { sessionId: session.id });
   }
 
   function closeVoting() {
     socket.emit('close_voting', { sessionId: session.id });
   }
-
-  const myVote = revealedVote ?? localVote;
 
   return (
     <div className="min-h-screen max-w-3xl mx-auto p-4 md:p-6">
@@ -71,8 +82,12 @@ export default function Deciding() {
         <div className="bg-slate-900/60 rounded-2xl p-5 ring-1 ring-slate-800">
           <VotePanel
             options={options}
-            myVote={myVote}
-            onVote={handleVote}
+            ranking={localRanking}
+            voteLimit={voteLimit}
+            submitted={submitted}
+            onToggle={toggleRank}
+            onLockIn={lockIn}
+            onEdit={editVotes}
             voteProgress={session.voteProgress}
             isHost={isHost}
             onCloseVoting={closeVoting}

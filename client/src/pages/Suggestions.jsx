@@ -32,6 +32,9 @@ export default function Suggestions() {
   function setMode(mode) {
     socket.emit('set_decision_mode', { sessionId: session.id, mode });
   }
+  function setVoteLimit(limit) {
+    socket.emit('set_vote_limit', { sessionId: session.id, limit });
+  }
   function startDeciding() {
     socket.emit('start_deciding', { sessionId: session.id });
   }
@@ -145,6 +148,34 @@ export default function Suggestions() {
                       Vote
                     </button>
                   </div>
+                  {session.decisionMode === 'vote' && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-slate-300">Ranks per person</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setVoteLimit(session.voteLimit - 1)}
+                          disabled={session.voteLimit <= 1}
+                          aria-label="Fewer ranks"
+                          className="w-7 h-7 rounded-md bg-slate-800 ring-1 ring-slate-700 hover:bg-slate-700 disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-semibold tabular-nums">
+                          {session.voteLimit}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setVoteLimit(session.voteLimit + 1)}
+                          disabled={session.voteLimit >= session.suggestions.length}
+                          aria-label="More ranks"
+                          className="w-7 h-7 rounded-md bg-slate-800 ring-1 ring-slate-700 hover:bg-slate-700 disabled:opacity-40"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <button
                     onClick={startDeciding}
                     disabled={!canDecide}
@@ -166,6 +197,8 @@ export default function Suggestions() {
                   {session.decisionMode && (
                     <span className="block mt-1 text-emerald-300">
                       Mode: {session.decisionMode}
+                      {session.decisionMode === 'vote' &&
+                        ` · rank up to ${session.voteLimit}`}
                     </span>
                   )}
                 </p>
